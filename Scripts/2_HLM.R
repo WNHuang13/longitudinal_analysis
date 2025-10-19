@@ -1,51 +1,49 @@
-library(tidyverse)
 library(lme4)
 library(lmerTest)
-library(ggplot2)
+library(tidyverse)
+library(performance)
 
-df_long <- df_long %>%
-  rename(ssw = ssw_r) %>% 
+
+hlm_data <- data_long %>%
+  filter(wave %in% 3:6) %>%  
+  select(hhidpn, wave, gender, s1educ, cog27) %>%
+  drop_na(cog27) %>%
   mutate(
-    year = as.numeric(year),
-    ssw = ssw / 1000, 
-    year_c = year - 2006)
-
-# HLM
-# Random intercept
-hlm_int <- lmer(ssw ~ year_c + (1 | id), data = df_long, REML = FALSE)
-
-#Random intercept +slope
-hlm_slope <- lmer(ssw ~ year_c + (year_c | id), data = df_long, REML = FALSE)
-
-# Compare model
-anova(hlm_int, hlm_slope)
-
-summary(hlm_slope)
-VarCorr(hlm_slope)
-
-# Visualization
-pred_df <- df_long %>%
-  group_by(year) %>%
-  summarize(predicted = predict(
-    hlm_slope,
-    newdata = data.frame(year_c = year - 2006, id = NA),
-    re.form = NA
-  ))
-
-obs_df <- df_long %>%
-  group_by(year) %>%
-  summarize(mean_ssw = mean(ssw, na.rm = TRUE))
-
-ggplot() +
-  geom_line(data = obs_df, aes(x = year, y = mean_ssw),
-            color = "gray50", size = 1, linetype = "dashed") +
-  geom_line(data = pred_df, aes(x = year, y = predicted),
-            color = "darkorange", size = 1.2) +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = "HLM: Average Growth Trajectory (1992–2020)",
-    subtitle = "Orange line = Model prediction; Gray dashed line = Observed mean",
-    x = "Year",
-    y = "Social Security Wealth (thousand units)"
+    wave = as.numeric(wave),
+    gender = ifelse(gender == 2, 1, 0), 
+    s1educ = as.numeric(s1educ),
+    time = wave - min(wave, na.rm = TRUE) 
   )
+
+summary(hlm_data)
+
+
+
+# Model 1: Random intercept
+model1 <- lmer(cog27 ~ time + (1 | hhidpn), data = hlm_data, REML = FALSE)
+summary(model1)
+icc(model1)
+
+# Model 2: Random intercept + slope
+model2 <- lmer(cog27 ~ time + (time | hhidpn), data = hlm_data, REML = FALSE)
+summary(model2)
+icc(model2)
+
+# Model 3:Add gender+ education as predictors
+model3 <- lmer(
+  cog27 ~ time + s1educ + gender + time:s1educ + time:gender + (time | hhidpn),
+  data = hlm_data, REML = FALSE
+)
+
+summary(model3)
+icc(model3)
+
+# Model comparison
+anova(model1, model2, model3)
+
+
+
+
+
+
 

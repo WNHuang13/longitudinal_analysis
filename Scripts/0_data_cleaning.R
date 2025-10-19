@@ -1,81 +1,89 @@
-library(tidyverse)
+library(data.table)
+library(rio) 
+library(tidyverse) 
+library(janitor)
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+library(lavaan)
+library(mice)
 library(naniar)
 
-SSWEALTH <- read_csv("data/SSWEALTH.csv")
+file_path <- "Library/CloudStorage/OneDrive-TheUniversityofAuckland/Codes/Longitudinal_Modeling_R/Data/randhrs1992_2022.sav" 
+file_path <- "C:/Users/whua616/OneDrive - The University of Auckland/Codes/Longitudinal_Modeling_R/Data/randhrs1992_2022.sav"
+
+hrs_data_raw <- rio::import(
+  file_path, 
+  setclass = "data.table"
+) 
+
+# select variables
+vars_id <- c("HHIDPN", "RDEATH")
+
+vars_demo <- c("S1RACEM", "S1HISPAN", "RAGENDER","S1GENDER", "S1EDUC", "S1MEDUC", "S1FEDUC")
+
+vars_wave <- c(
+  # Health
+  outer(paste0(c("S", "R"), 1:16), c("CESD", "COG27", "SRH", "CHRON"), paste0),
+  # Function
+  outer(paste0(c("S", "R"), 1:16), c("ADL", "IADL"), paste0),
+  # Economic
+  outer(paste0(c("S", "R"), 1:16), c("FINR", "FAMR", "ATOT"), paste0),
+  # Behaviour
+  outer(paste0(c("S", "R"), 1:16), c("MSTAT", "SMOKEV", "DAGE_Y"), paste0)
+) %>% as.vector()
+
+vars_keep <- unique(c(vars_id, vars_demo, vars_wave))
 
 
-id_vars <- c("HHID", "PN")
-ssw_vars <- grep("^R[0-9]+SSWRXA$", names(SSWEALTH), value = TRUE)
-claim_vars <- grep("^R[0-9]+CLAIMED$", names(SSWEALTH), value = TRUE)
+# wide format data
+vars_exist <- intersect(vars_keep, names(hrs_data_raw))
 
-ssw_spouse_vars <- grep("^S[0-9]+SSWRXA$", names(SSWEALTH), value = TRUE)
-ssw_house_vars  <- grep("^H[0-9]+SSWRXA$", names(SSWEALTH), value = TRUE)
+data_wide <- hrs_data_raw[, ..vars_exist]
 
-df <- SSWEALTH %>%
-  select(all_of(id_vars), all_of(ssw_vars), all_of(claim_vars))
+setnames(data_wide, tolower(names(data_wide)))
 
+data_wide <- data_wide %>%
+  rename(gender = ragender)
 
-# Reshape from wide to long format
-df_long <- df %>%
-  pivot_longer(cols = starts_with("R"),names_to = "wave", values_to = "ssw_r") %>%
-  mutate(
-    wave = as.numeric(str_extract(wave, "[0-9]+")),
-    id = paste(HHID, PN, sep = "_")
+#long format data
+data_long <- data_wide %>%
+  pivot_longer(
+    cols = matches("^(s|r)[0-9]+(cesd|cog27|srh|adl|iadl|finr|famr|atot|mstat|smokev|dage_y|chron)$"),
+    names_to = c("wave", "variable"),
+    names_pattern = "([sr][0-9]+)([a-z0-9_]+)",
+    values_to = "value"
   ) %>%
-  arrange(id, wave)
-
-# Add year variable 
-df_long <- df_long %>%
-  mutate(year = 1990 + 2 * wave)
-
-# Missing data
-
-# Quick overall missing rate
-df_long %>%
-  summarise(
-    total_rows = n(),
-    missing_ssw = sum(is.na(ssw_r)),
-    pct_missing = round(mean(is.na(ssw_r)) * 100, 2)
-  )
-
-# Missing rate per wave
-df_long %>%
-  group_by(wave) %>%
-  summarise(
-    n = n(),
-    missing_n = sum(is.na(ssw_r)),
-    pct_missing = round(mean(is.na(ssw_r)) * 100, 2)
-  )
-
-# Missing data visualization
-df_long %>%
-  group_by(wave) %>%
-  summarise(pct_available = (1 - mean(is.na(ssw_r))) * 100) %>%
-  ggplot(aes(x = wave, y = pct_available)) +
-  geom_col(fill = "steelblue") +
-  theme_minimal() +
-  labs(title="Percentage of Available SSW Data by Wave",y="Available", x="Wave")
-
-write_csv(df_long, "Longitudinal_Modeling_R/Data/SSW_long.csv")
-
-
-# Ensure unique 
-df_long_unique <- df_long %>%
-  group_by(id, wave) %>%
-  slice(1) %>% 
-  ungroup()
-
-# Convert to wide format
-df_wide <- df_long_unique %>%
-  mutate(year_label = paste0("ssw_", year)) %>%
   pivot_wider(
-    id_cols = c(id, HHID, PN),
-    names_from = year_label,
-    values_from = ssw_r
+    names_from = variable,
+    values_from = value,
+    values_fn = ~ dplyr::first(na.omit(.))
+  ) %>%
+  mutate(
+    wave = as.numeric(str_extract(wave, "\\d+")),
+    year = 1990 + wave * 2,
+    gender = as.factor(gender)
   )
 
+# delete invalid participants
+data_wide <- data_wide[, which(colSums(!is.na(data_wide)) > 0), with = FALSE]
+data_long <- data_long[, which(colSums(!is.na(data_long)) > 0), with = FALSE]
 
-write_csv(df_wide, "Longitudinal_Modeling_R/Data/SSW_wide.csv")
+
+output_dir <- "Library/CloudStorage/OneDrive-TheUniversityofAuckland/Codes/Longitudinal_Modeling_R/Data/"
+
+fwrite(data_wide, paste0(output_dir, "data_wide.csv"))
+fwrite(data_long, paste0(output_dir, "data_long.csv"))
+
+
+# missing data
+
+miss_summary <- miss_var_summary(data_long)
+print(miss_summary)
+
+gg_miss_upset(data_long, nsets = 10)
 
 
 

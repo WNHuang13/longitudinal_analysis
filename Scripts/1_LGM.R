@@ -1,99 +1,123 @@
-
-library(tidyverse)
+library(dplyr)
+library(tidyr)
 library(lavaan)
-library(ggplot2)
 
-glimpse(df_wide)
+# select variables 
+lgm_data <- data_long %>%
+  filter(wave %in% 3:6) %>%
+  select(hhidpn, wave, cog27, gender, s1educ) %>%
+  pivot_wider(names_from = wave, values_from = cog27,
+              names_prefix = "cog27_")
 
-ssw_vars <- paste0("ssw_", seq(1992, 2020, 2))
+sum(is.na(lgm_data$gender))
+mean(is.na(lgm_data$gender))
 
+# missing data
+summary(lgm_data)
 
-# Select relevant variables
-df_model <- df_wide %>%
-  select(id, starts_with("ssw_"))
+#LGM
+model_mimic <- '
+  i =~ 1*cog27_3 + 1*cog27_4 + 1*cog27_5 + 1*cog27_6
+  s =~ 0*cog27_3 + 1*cog27_4 + 2*cog27_5 + 3*cog27_6
 
-# check missing data
-missing_rate <- df_model %>%
-  summarise(pct_missing = mean(is.na(across(all_of(ssw_vars)))) * 100)
-
-print(missing_rate)
-
-# Latent Growth Model
-df_model <- df_model %>%
-  mutate(across(starts_with("ssw_"), ~ . / 1000))
-
-years <- c(1992, 1994, 1996, 1998, 2000, 2002, 2004, 2006, 
-           2008, 2010, 2012, 2014, 2016, 2018, 2020)
-years_scaled <- scale(years, center = 2006, scale = FALSE)
-
-model_lgm <- paste0("
-  i =~ ", paste0("1*", ssw_vars, collapse = " + "), "
-  s =~ ", paste0(round(as.numeric(years_scaled), 1), "*", ssw_vars, collapse = " + "), "
   i ~ 1
   s ~ 1
+
   i ~~ s
-")
+  i ~~ i
+  s ~~ s
 
-fit_lgm <- growth(model_lgm, data = df_model, missing = 'fiml')
-summary(fit_lgm, fit.measures = TRUE, standardized = TRUE)
+  cog27_3 ~~ e*cog27_3
+  cog27_4 ~~ e*cog27_4
+  cog27_5 ~~ e*cog27_5
+  cog27_6 ~~ e*cog27_6
+
+  i ~ s1educ + gender
+  s ~ s1educ + gender
+'
+
+fit_mimic <- growth(model_mimic, data = lgm_data, missing = "FIML")
+summary(fit_mimic, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_mimic, c("cfi", "tli", "rmsea", "srmr"))
 
 
-# The model did not fit the data well, so a quadratic term was added
-years_scaled2 <- (years_scaled)^2
+# Residual free estimate
 
-model_lgm2 <- paste0("
-  i =~ ", paste0("1*", ssw_vars, collapse = " + "), "
-  s =~ ", paste0(round(as.numeric(years_scaled), 1), "*", ssw_vars, collapse = " + "), "
-  q =~ ", paste0(round(as.numeric(years_scaled2), 1), "*", ssw_vars, collapse = " + "), "
+model_free <- '
+  i =~ 1*cog27_3 + 1*cog27_4 + 1*cog27_5 + 1*cog27_6
+  s =~ 0*cog27_3 + 1*cog27_4 + 2*cog27_5 + 3*cog27_6
+
+  i ~ 1
+  s ~ 1
+
+  i ~~ s
+  i ~~ i
+  s ~~ s
+
+  cog27_3 ~~ cog27_3
+  cog27_4 ~~ cog27_4
+  cog27_5 ~~ cog27_5
+  cog27_6 ~~ cog27_6
+
+  i ~ s1educ + gender
+  s ~ s1educ + gender
+'
+
+fit_free <- growth(model_free, data = lgm_data, missing = "FIML")
+summary(fit_free, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_free, c("cfi", "tli", "rmsea", "srmr"))
+
+# Quadratic growth model
+
+model_quad <- '
+  i =~ 1*cog27_3 + 1*cog27_4 + 1*cog27_5 + 1*cog27_6
+  s =~ 0*cog27_3 + 1*cog27_4 + 2*cog27_5 + 3*cog27_6
+  q =~ 0*cog27_3 + 1*cog27_4 + 4*cog27_5 + 9*cog27_6
+
   i ~ 1
   s ~ 1
   q ~ 1
+
   i ~~ s + q
   s ~~ q
-")
+  i ~~ i
+  s ~~ s
+  q ~~ q
 
-fit_lgm2 <- growth(model_lgm2, data = df_model, missing = 'fiml')
-summary(fit_lgm2, fit.measures = TRUE, standardized = TRUE)
+  i ~ s1educ + gender
+  s ~ s1educ + gender
+  q ~ s1educ + gender
+'
 
+fit_quad <- growth(model_quad, data = lgm_data, missing = "FIML")
+summary(fit_quad, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_quad, c("cfi", "tli", "rmsea", "srmr"))
 
-# Latent Basis Model
-ssw_vars <- paste0("ssw_", seq(1992, 2020, 2))
+# Free loadings
+model_free_load <- '
+  i =~ 1*cog27_3 + 1*cog27_4 + 1*cog27_5 + 1*cog27_6
+  s =~ 0*cog27_3 + l1*cog27_4 + l2*cog27_5 + l3*cog27_6
 
-model_basis <- paste0("
-  i =~ 1*", paste(ssw_vars, collapse = " + 1*"), "
-  s =~ 0*", ssw_vars[1], " + NA*", ssw_vars[2], " + ",
-                      paste0(ssw_vars[3:(length(ssw_vars)-1)], collapse = " + "), " + 1*", ssw_vars[length(ssw_vars)], "
   i ~ 1
   s ~ 1
-  i ~~ s")
 
-fit_basis <- growth(model_basis, data = df_model, missing = "fiml")
-summary(fit_basis, fit.measures = TRUE, standardized = TRUE)
+  i ~~ s
+  i ~~ i
+  s ~~ s
+
+  cog27_3 ~~ cog27_3
+  cog27_4 ~~ cog27_4
+  cog27_5 ~~ cog27_5
+  cog27_6 ~~ cog27_6
+
+  i ~ s1educ + gender
+  s ~ s1educ + gender
+'
+
+fit_free_load <- growth(model_free_load, data = lgm_data, missing = "FIML")
+summary(fit_free_load, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_free_load, c("cfi", "tli", "rmsea", "srmr"))
 
 
-# Visualization
-
-param_est <- parameterEstimates(fit_basis)
-
-lambda_est <- param_est %>%
-  filter(lhs == "s", op == "=~") %>%
-  select(year = rhs, loading = est) %>%
-  mutate(year = as.numeric(str_extract(year, "\\d+")))
-
-mean_i <- param_est %>% filter(lhs == "i", op == "~1") %>% pull(est)
-mean_s <- param_est %>% filter(lhs == "s", op == "~1") %>% pull(est)
-
-avg_traj <- lambda_est %>%
-  mutate(predicted_ssw = mean_i + mean_s * loading)
-
-ggplot(avg_traj, aes(x = year, y = predicted_ssw)) +
-  geom_line(color = "steelblue", size = 1.2) +
-  geom_point(color = "darkblue") +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = "Estimated Growth Trajectory of Social Security Wealth (1992–2020)",
-    x = "Year",
-    y = "Predicted SSW (thousand units)"
-  )
 
 
