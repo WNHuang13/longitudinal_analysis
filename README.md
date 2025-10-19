@@ -1,17 +1,7 @@
 # Project Overview 
-
 This repository demonstrates longitudinal data analysis using R. 
 
-## Workflow 
-
-1. **Data Cleaning & Preparation (`0_data_cleaning.R`)** 
-
-2. **Latent Growth Modeling (`1_LGM.R`)** 
-
-3. **Hierarchical Linear Modeling (`2_HLM.R`)** 
-
-
-## 0_data_cleaning - Data Preparation 
+## data_cleaning - Data Preparation 
 
 This script prepares the RAND HRS 1992–2022 dataset for longitudinal analysis.  
 It selects relevant variables, reshapes the data from wide to long format, handles missing values, and exports clean files for modeling.
