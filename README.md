@@ -27,7 +27,7 @@ The analysis focuses on the COG27 cognitive score (range 0–27) across four wav
 
 ### Overview
 
-I applied ** (LGM)** within a **MIMIC framework** to explore whether individual differences in **education** and **gender** predict:
+I applied **LGM** within a **MIMIC framework** to explore whether individual differences in **education** and **gender** predict:
 - the **baseline level** of cognition, and  
 - the **rate of cognitive decline** over time.
 
@@ -70,3 +70,4 @@ Missing data were handled using **Full Information Maximum Likelihood (FIML)** i
 The **Free-Loading MIMIC LGM** achieved strong fit  
 (CFI = 0.956, TLI = 0.898, RMSEA = 0.083, SRMR = 0.031),  
 revealing that **education** buffers cognitive decline and that **aging-related change** in cognition is distinctly **nonlinear**.
+
